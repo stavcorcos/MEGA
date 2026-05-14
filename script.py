@@ -103,7 +103,6 @@ async def report(ctx):
 
 @pyd.res.bot.event
 async def on_ready():
-    pyd.res.DiscordComponents(pyd.res.bot)
     print(f"Logged in as {pyd.res.bot.user}!")
 
 
@@ -120,6 +119,6 @@ async def on_message(ctx):
         owner = await pyd.res.bot.fetch_user(207665962915332099)
         await owner.send(ctx.author.name + " - " + str(ctx.author.id) + " - " + ctx.content)
         await ctx.add_reaction(emoji="👍")
-        
+
 
 pyd.res.bot.run(pyd.con.TOKEN)

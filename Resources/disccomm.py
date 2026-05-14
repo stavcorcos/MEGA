@@ -10,6 +10,92 @@ import copy
 #Importing dungeons
 import Resources.dungeon as dng
 import Resources.dungeons.deadmines as dmvc
+
+def _textsize(draw, text, font):
+    """Pillow 10+ removed textsize(); use textbbox instead."""
+    bb = draw.textbbox((0, 0), str(text), font=font)
+    return bb[2] - bb[0], bb[3] - bb[1]
+
+class AwaitView(res.discord.ui.View):
+    """discord.py 2.0 View that replaces the old discord-components wait pattern.
+
+    Accepts the same nested-row structure the old library used:
+      rows = [[Button, Button], [Select]]  or  [Select]  (flat list normalised)
+    Collects one interaction from any user in `whom_set`, stores the result in
+    self.reactions, then stops itself.  On timeout it disables all items and
+    edits the original message.
+    """
+    def __init__(self, rows, whom_set, timeout=30):
+        super().__init__(timeout=timeout)
+        self._whom = {str(w) for w in whom_set}
+        self.reactions = {}
+        self._message = None
+
+        # Normalise: wrap bare components in a row list
+        normalised = []
+        for item in rows:
+            if isinstance(item, (list, tuple)):
+                normalised.append(list(item))
+            else:
+                normalised.append([item])
+
+        for row_idx, row in enumerate(normalised):
+            for comp in row:
+                if isinstance(comp, res.Button):
+                    btn = res.discord.ui.Button(
+                        label=comp.label,
+                        style=res._BUTTON_STYLES.get(comp.style, res.discord.ButtonStyle.secondary),
+                        custom_id=comp.custom_id,
+                        disabled=comp.disabled,
+                        emoji=comp.emoji,
+                        row=row_idx,
+                    )
+                    btn.callback = self._make_button_callback(comp.custom_id)
+                    self.add_item(btn)
+                elif isinstance(comp, res.Select):
+                    sel = res.discord.ui.Select(
+                        placeholder=comp.placeholder,
+                        options=comp.options,
+                        disabled=comp.disabled,
+                        row=row_idx,
+                    )
+                    sel.callback = self._make_select_callback()
+                    self.add_item(sel)
+
+    async def interaction_check(self, interaction):
+        return str(interaction.user.id) in self._whom
+
+    def _make_button_callback(self, custom_id):
+        async def callback(interaction):
+            uid = str(interaction.user.id)
+            if uid in self.reactions:
+                self.reactions[uid] = custom_id
+            for item in self.children:
+                item.disabled = True
+            await interaction.response.edit_message(view=self)
+            self.stop()
+        return callback
+
+    def _make_select_callback(self):
+        async def callback(interaction):
+            uid = str(interaction.user.id)
+            if uid in self.reactions:
+                self.reactions[uid] = interaction.data['values'][0]
+            for item in self.children:
+                item.disabled = True
+            await interaction.response.edit_message(view=self)
+            self.stop()
+        return callback
+
+    async def on_timeout(self):
+        for item in self.children:
+            item.disabled = True
+        if self._message:
+            try:
+                await self._message.edit(view=self)
+            except Exception:
+                pass
+
 def randomString(stringLength):
     letters = res.string.ascii_lowercase
     return ''.join(res.random.choice(letters) for i in range(stringLength))
@@ -52,10 +138,7 @@ async def createMessageCanvas(userID, ctx, printUser):
 async def pasteUser(userID, ctx, canvas, d):
     discordUser = await ctx.guild.query_members(user_ids=[userID])
     discordUser = discordUser[0]
-    try:
-        pfp = str(discordUser.avatar_url).replace("webp", "png")
-    except:
-        pfp = str(discordUser.avatar).replace("webp", "png")
+    pfp = str(discordUser.avatar.url if discordUser.avatar else discordUser.default_avatar.url).replace("webp", "png")
     r = res.requests.get(pfp, allow_redirects=True)
     pfpsString = randomString(8)
     pfpString = pfpsString + ".png"
@@ -83,7 +166,7 @@ async def pasteLongText(userID, d, font, offset, msg, canvas, ctx, toSplit, defa
             color = (255,255,0)
             coloring = "NPC"
             if "\n" in i:
-                width, height = d.textsize(i + " ", font = font)
+                width, height = _textsize(d,i + " ", font = font)
                 currentHeight += height
                 cumulativeHeight += height
                 currentWidth = offset[0]
@@ -95,7 +178,7 @@ async def pasteLongText(userID, d, font, offset, msg, canvas, ctx, toSplit, defa
             color = newcolors
             coloring = "ITEM"
             if "\n" in i:
-                width, height = d.textsize(i + " ", font = font)
+                width, height = _textsize(d,i + " ", font = font)
                 currentHeight += height
                 cumulativeHeight += height
                 currentWidth = offset[0]
@@ -103,7 +186,7 @@ async def pasteLongText(userID, d, font, offset, msg, canvas, ctx, toSplit, defa
             color = (0,200,0)
             coloring = "PLAYER"
             if "\n" in i:
-                width, height = d.textsize(i + " ", font = font)
+                width, height = _textsize(d,i + " ", font = font)
                 currentHeight += height
                 cumulativeHeight += height
                 currentWidth = offset[0]
@@ -111,13 +194,13 @@ async def pasteLongText(userID, d, font, offset, msg, canvas, ctx, toSplit, defa
             color = (255,0,0)
             coloring = "NPC"
             if "\n" in i:
-                width, height = d.textsize(i + " ", font = font)
+                width, height = _textsize(d,i + " ", font = font)
                 currentHeight += height
                 cumulativeHeight += height
                 currentWidth = offset[0]
         else:
             #Get width of word and check if width is too large or if newspace began
-            width, height = d.textsize(i + " ", font = font)
+            width, height = _textsize(d,i + " ", font = font)
             height = font.size + 5
             if (width + currentWidth > 300 or "\n" in i): #Check if text is too big
                 if "\n" in i:
@@ -147,14 +230,14 @@ async def pasteLongText(userID, d, font, offset, msg, canvas, ctx, toSplit, defa
                         i = i.replace(":","")
                         isSemicolon = True
                     i = i.replace(")","")
-                    width, height = d.textsize(i, font = font)
+                    width, height = _textsize(d,i, font = font)
                     d.text((currentWidth, currentHeight), i, fill=color, font = font)
                     currentWidth += width
                     color = defaultColor
 
                     if isSemicolon:
                         #Paste semicolon and space
-                        width, height = d.textsize(": ", font = font)
+                        width, height = _textsize(d,": ", font = font)
                         d.text((currentWidth, currentHeight), ":", fill=color, font = font)
                         currentWidth += width
                     coloring = False
@@ -162,32 +245,32 @@ async def pasteLongText(userID, d, font, offset, msg, canvas, ctx, toSplit, defa
                     #paste the item itself
                     if "]" in i:
                         i = i.split("]")
-                        width, height = d.textsize(i[0] + "]", font = font)
+                        width, height = _textsize(d,i[0] + "]", font = font)
                         d.text((currentWidth, currentHeight), i[0] + "]", fill=color, font = font)
                         currentWidth += width
                         color = defaultColor
                     else:
                         i = i.split(")")
-                        width, height = d.textsize(i[0], font = font)
+                        width, height = _textsize(d,i[0], font = font)
                         d.text((currentWidth, currentHeight), i[0], fill=color, font = font)
                         currentWidth += width
                         color = defaultColor
 
                     #Paste substring after
-                    width, height = d.textsize(i[1] + " ", font = font)
+                    width, height = _textsize(d,i[1] + " ", font = font)
                     d.text((currentWidth, currentHeight), i[1], fill=color, font = font)
                     currentWidth += width
                     coloring = False
                 elif coloring == "PLAYER": #If player colors were detected
                     i = i.split(")")
                     #Paste the name of the character
-                    width, height = d.textsize(i[0], font = font)
+                    width, height = _textsize(d,i[0], font = font)
                     d.text((currentWidth, currentHeight), i[0], fill=color, font = font)
                     currentWidth += width
                     color = defaultColor
 
                     #Paste any substring after with normal color
-                    width, height = d.textsize(i[1] + " ", font = font)
+                    width, height = _textsize(d,i[1] + " ", font = font)
                     d.text((currentWidth, currentHeight), i[1], fill=color, font = font)
                     currentWidth += width
                     coloring = False
@@ -228,7 +311,7 @@ def fetchColoredModel(modelID, race, subfolder):
     im2.save("./Art/" + subfolder + item.Name + ".png", "PNG")
     return item.Name
 
-async def sendMessage(userID, ctx, textToSend, pasteUser, components = None):
+async def sendMessage(userID, ctx, textToSend, pasteUser, view=None):
     async with ctx.typing():
         #Create the canvas
         canvas, heightCheck, draw = await createMessageCanvas(userID, ctx, pasteUser)
@@ -242,8 +325,8 @@ async def sendMessage(userID, ctx, textToSend, pasteUser, components = None):
         msgString = randomString(8)
         imgString = msgString + ".png"
         newctx.save(imgString, format="png")
-        if components:
-            return await ctx.send(file=res.discord.File((imgString)), components = components), res.os.remove(imgString)
+        if view:
+            return await ctx.send(file=res.discord.File((imgString)), view=view), res.os.remove(imgString)
         else:
             return await ctx.send(file=res.discord.File((imgString))), res.os.remove(imgString)
 
@@ -397,15 +480,15 @@ async def showCharacter(userID, ctx):
         canvas.paste(healthbarFrame, (0, 256), mask=healthbarFrame)
 
         #Paste the numerical values of exp and health
-        w, h = d.textsize(User.Health + " / " + str((int(User.Stamina) * 10)), font = BitPotion)
+        w, h = _textsize(d,User.Health + " / " + str((int(User.Stamina) * 10)), font = BitPotion)
         await pasteLongText(userID, d, BitPotion, (((300-w)/2),(300- h - 5)), User.Health + " / " + str((int(User.Stamina) * 10)), canvas, ctx.message, False, (0,0,0))
-        w, h = d.textsize(User.Exp + " / " + str(expneeded), font = BitPotion)
+        w, h = _textsize(d,User.Exp + " / " + str(expneeded), font = BitPotion)
         await pasteLongText(userID, d, BitPotion, (((300-w)/2),(280- h - 5)), User.Exp + " / " + str(expneeded), canvas, ctx.message, False, (0,0,0))
 
         #Paste the name and race at the top of the screen
-        w, h = d.textsize(User.Name, font = Morpheusbig)
+        w, h = _textsize(d,User.Name, font = Morpheusbig)
         await pasteLongText(userID, d, Morpheusbig, (150 - (w/2),-4), "%PLAYER " + User.Name + ")", canvas, ctx.message, False, (0,0,0))
-        w, h = d.textsize(User.Race.title() + " " + User.Class.title(), font = Morpheussmall)
+        w, h = _textsize(d,User.Race.title() + " " + User.Class.title(), font = Morpheussmall)
         await pasteLongText(userID, d, Morpheussmall, (150 - (w/2), 20), User.Race.title() + " " + User.Class.title(), canvas, ctx.message, False, (0,0,0))
 
         #Paste the armor value and depending on class paste mainstat value
@@ -418,11 +501,11 @@ async def showCharacter(userID, ctx):
             await pasteLongText(userID, d, Morpheussmall, (2, 230), "Agility: " + User.Stat, canvas, ctx.message, False, (0,0,0))
 
         #Paste character level and gold amount in bottom right corner.
-        w, h = d.textsize("Level: " + User.Level, font = Morpheussmall)
+        w, h = _textsize(d,"Level: " + User.Level, font = Morpheussmall)
         await pasteLongText(userID, d, Morpheussmall, (300 - w - 5, 210), "Level: " + User.Level, canvas, ctx.message, False, (0,0,0))
 
         #Paste golden coin and golden numerical value in bottom right corner
-        w, h = d.textsize(User.Gold + " gold", font = Morpheussmall)
+        w, h = _textsize(d,User.Gold + " gold", font = Morpheussmall)
         await pasteLongText(userID, d, Morpheussmall, (300 - w - 5, 230), User.Gold + " gold", canvas, ctx.message, False, (0,0,0))
         pasteModel("goldcoin", "", canvas, (300 - 29 - w,235), False)
 
@@ -579,7 +662,7 @@ async def train(userID, ctx):
     res.activeUsers.remove(userID)
     return await sendMessage(userID, ctx, "You choose to rest and train another day.", True)
 
-async def combatMessage(userID, ctx, Mob, combattext, components):
+async def combatMessage(userID, ctx, Mob, combattext, view=None):
     async with ctx.typing():
         canvas, heightCheck, draw = await createMessageCanvas(userID, ctx, False)
         User = fetchUser(userID, False)
@@ -588,18 +671,18 @@ async def combatMessage(userID, ctx, Mob, combattext, components):
         healthbar = res.Image.open("./Art/healthbar.png").convert("RGBA")
         healthbarFrame = res.Image.open("./Art/whitehealthbarframe.png").convert("RGBA")
         BitPotion = res.ImageFont.truetype("./Art/fonts/BitPotion.ttf", 28)
-        w, h = draw.textsize(User.Name, font = Morpheus)
+        w, h = _textsize(draw,User.Name, font = Morpheus)
         heightCheck, canvas = await pasteLongText(userID, draw, Morpheus, [150-(w/2), heightCheck], "%PLAYER " + User.Name + ")", canvas, ctx, True)
         remainingHealth = int((int(User.Health)/(int(User.Stamina) * 10)) * 300)
         ActualHealthBar = healthbar.crop((0,0,remainingHealth,26))
         canvas.paste(ActualHealthBar, (0, heightCheck), mask=ActualHealthBar)
         canvas.paste(healthbarFrame, (0, heightCheck), mask=healthbarFrame)
-        w, h = draw.textsize(User.Health + " / " + str((int(User.Stamina) * 10)), font = BitPotion)
+        w, h = _textsize(draw,User.Health + " / " + str((int(User.Stamina) * 10)), font = BitPotion)
         await pasteLongText(userID, draw, BitPotion, (150 - (w/2),heightCheck - 1), User.Health + " / " + str((int(User.Stamina) * 10)), canvas, ctx.message, False, (255,255,255))
         heightCheck += 30
-        w, h = draw.textsize("VS.", font = Morpheus)
+        w, h = _textsize(draw,"VS.", font = Morpheus)
         heightCheck, canvas = await pasteLongText(userID, draw, Morpheus, [150-(w/2), heightCheck], "VS.", canvas, ctx, True)
-        w, h = draw.textsize(Mob.name.split("%BOSS")[1].split(")")[0], font = Morpheus)
+        w, h = _textsize(draw,Mob.name.split("%BOSS")[1].split(")")[0], font = Morpheus)
         if w > 286:
             heightCheck, canvas = await pasteLongText(userID, draw, Morpheus, [5, heightCheck], Mob.name, canvas, ctx, True)
         else:
@@ -608,7 +691,7 @@ async def combatMessage(userID, ctx, Mob, combattext, components):
         ActualHealthBar = healthbar.crop((0,0,remainingHealth,26))
         canvas.paste(ActualHealthBar, (0, heightCheck), mask=ActualHealthBar)
         canvas.paste(healthbarFrame, (0, heightCheck), mask=healthbarFrame)
-        w, h = draw.textsize(str(int(Mob.health)) + " / " + str(int(Mob.maxHealth)), font = BitPotion)
+        w, h = _textsize(draw,str(int(Mob.health)) + " / " + str(int(Mob.maxHealth)), font = BitPotion)
         await pasteLongText(userID, draw, BitPotion, (150 - (w/2),heightCheck - 1), str(int(Mob.health)) + " / " + str(int(Mob.maxHealth)), canvas, ctx.message, False, (255,255,255))
         heightCheck += 30
         
@@ -623,54 +706,24 @@ async def combatMessage(userID, ctx, Mob, combattext, components):
         msgString = randomString(8)
         imgString = msgString + ".png"
         newctx.save(imgString, format="png")
-        if components:
-            return await ctx.send(file=res.discord.File((imgString)), components = components), res.os.remove(imgString)
+        if view:
+            return await ctx.send(file=res.discord.File((imgString)), view=view), res.os.remove(imgString)
         else:
             return await ctx.send(file=res.discord.File((imgString))), res.os.remove(imgString)
 async def addCombatComponentsAndWaitFor(userID, ctx, Mob, msgtosend, timeouts, **kwargs):
-    labelToHold = {}
-    components = []
-    def Check(userid, response, label, msgid):
-        if msgid != msg.id:
-            return False
-        if userid not in usersReactions:
-            return False
-        usersReactions[userid] = response
-        labelToHold["label"] = label.label
-        if hasattr(label, "id"):
-            labelToHold["label"] = ""
-        for k in usersReactions:
-            if not usersReactions[k]:
-                return False
-        return True
     usersReactions = {}
+    comps = None
     for key, value in kwargs.items():
         if "whom" in key:
             usersReactions[value] = None
         else:
-            components.append(value)
-    msg, _ = await combatMessage(userID, ctx, Mob, msgtosend, components[0])
-    try:
-        done, pending = await res.asyncio.wait([
-            res.bot.wait_for('select_option', check = lambda i: Check(str(i.user.id), i.component[0].value, i.component[0], i.message.id)),
-            res.bot.wait_for('button_click', check = lambda i: Check(str(i.user.id), i.component.id, i.component, i.message.id))
-        ], return_when=res.asyncio.FIRST_COMPLETED, timeout=timeouts)
-        for task in done:
-            interaction = task.result()
-        for i in components[0]:
-            for x in i:
-                x.disabled = True
-                if labelToHold["label"]:
-                    x.placeholder = labelToHold["label"]
-        await interaction.respond(type=7, components = components[0])
-    except:
-        for i in components[0]:
-            for x in i:
-                x.disabled = True
-                x.placeholder = ""
-        await msg.edit(components = components[0])
-
-    return usersReactions
+            comps = value
+    view = AwaitView(comps, set(usersReactions.keys()), timeout=timeouts)
+    view.reactions = {k: None for k in usersReactions}
+    msg, _ = await combatMessage(userID, ctx, Mob, msgtosend, view)
+    view._message = msg
+    await view.wait()
+    return view.reactions
 
 async def combat(userID, ctx, Mob):
     User = fetchUser(userID, False)
@@ -908,7 +961,7 @@ async def showItemData(userID, ctx, itemString):
     pasteModel("black", "", canvas, (0,0), False)
     pasteModel("topandbot", "", canvas, (0,0), False)
     name = item.returnFullItemName()
-    w, h = d.textsize("[" + item.Name + "]", Morpheusbig)
+    w, h = _textsize(d,"[" + item.Name + "]", Morpheusbig)
     del h
     #Name of the item:
     if w >= 286:
@@ -927,7 +980,7 @@ async def showItemData(userID, ctx, itemString):
     #Slot item goes into (if armor):
     if item.Slot and item.Type:
         noVal, canvas = await pasteLongText(userID, d, Morpheussmall, (7, heightCheck), item.Slot, canvas, ctx, True, (255,255,255))
-        w, h = d.textsize(item.Type, font = Morpheussmall)
+        w, h = _textsize(d,item.Type, font = Morpheussmall)
         del noVal
         heightCheck, canvas = await pasteLongText(userID, d, Morpheussmall, (300 - 7 - w, heightCheck), item.Type, canvas, ctx, True, (255,255,255))
     elif item.Slot and item.Type == None:
@@ -980,7 +1033,7 @@ async def showItemData(userID, ctx, itemString):
     if item.Flavor:
         heightCheck, canvas = await pasteLongText(userID, d, Morpheussmall, (7, heightCheck), item.Flavor, canvas, ctx, False, (251, 203, 2))
     if item.Value:
-        w, h = d.textsize("Sell value: " + item.Value, Morpheussmall)
+        w, h = _textsize(d,"Sell value: " + item.Value, Morpheussmall)
         pasteModel("goldcoin", "", canvas, (10+w, heightCheck+7), False)
         heightCheck, canvas = await pasteLongText(userID, d, Morpheussmall, (7, heightCheck), "Sell value: " + item.Value, canvas, ctx, False, (255,255,255))
     pasteModel("topandbot", "", canvas, (0, heightCheck + 2), False)
@@ -1120,7 +1173,7 @@ async def showFullInventory(userID, ctx):
             pasteModel("black", "", canvas, (0,0), False)
             pasteModel("topandbot", "", canvas, (0,0), False)
             name = item.returnFullItemName()
-            w, h = d.textsize("[" + item.Name + "]", Morpheusbig)
+            w, h = _textsize(d,"[" + item.Name + "]", Morpheusbig)
             del h
             #Name of the item:
             if w >= 286:
@@ -1139,7 +1192,7 @@ async def showFullInventory(userID, ctx):
             #Slot item goes into (if armor):
             if item.Slot and item.Type:
                 noVal, canvas = await pasteLongText(userID, d, Morpheussmall, (7, heightCheck), item.Slot, canvas, ctx, True, (255,255,255))
-                w, h = d.textsize(item.Type, font = Morpheussmall)
+                w, h = _textsize(d,item.Type, font = Morpheussmall)
                 del noVal
                 heightCheck, canvas = await pasteLongText(userID, d, Morpheussmall, (300 - 7 - w, heightCheck), item.Type, canvas, ctx, True, (255,255,255))
             elif item.Slot and not item.Type:
@@ -1190,7 +1243,7 @@ async def showFullInventory(userID, ctx):
             if item.Flavor:
                 heightCheck, canvas = await pasteLongText(userID, d, Morpheussmall, (7, heightCheck), item.Flavor, canvas, ctx, True, (120,120,120))
             if item.Value:
-                w, h = d.textsize("Sell value: " + item.Value, Morpheussmall)
+                w, h = _textsize(d,"Sell value: " + item.Value, Morpheussmall)
                 pasteModel("goldcoin", "", canvas, (10+w, heightCheck+7), False)
                 heightCheck, canvas = await pasteLongText(userID, d, Morpheussmall, (7, heightCheck), "Sell value: " + item.Value, canvas, ctx, True, (255,255,255))
             pasteModel("topandbot", "", canvas, (0, heightCheck + 2), False)
@@ -1231,51 +1284,20 @@ def checkAllVoted(dicts):
         if i == None:
             return False
     return True
-#Sends a ctx using sendMessage, adds specified emojis and waits for specified user(s) to respond. Returns a dict with user(s) and their reaction(s)
 async def addComponentsAndWaitFor(userID, ctx, msgToSend, timeouts, **kwargs):
-    labelToHold = {}
-    components = []
-    def Check(userid, response, label, msgid):
-        if msgid != msg.id:
-            return False
-        if userid not in usersReactions:
-            return False
-        usersReactions[userid] = response
-        labelToHold["label"] = label.label
-        if hasattr(label, "id"):
-            labelToHold["label"] = ""
-        for k in usersReactions:
-            if not usersReactions[k]:
-                return False
-        return True
     usersReactions = {}
+    comps = None
     for key, value in kwargs.items():
         if "whom" in key:
             usersReactions[value] = None
         else:
-            components.append(value)
-    msg, _ = await sendMessage(userID, ctx, msgToSend, True, components[0])
-    try:
-        done, pending = await res.asyncio.wait([
-            res.bot.wait_for('select_option', check = lambda i: Check(str(i.user.id), i.component[0].value, i.component[0], i.message.id)),
-            res.bot.wait_for('button_click', check = lambda i: Check(str(i.user.id), i.component.id, i.component, i.message.id))
-        ], return_when=res.asyncio.FIRST_COMPLETED, timeout=timeouts)
-        for task in done:
-            interaction = task.result()
-        for i in components[0]:
-            for x in i:
-                x.disabled = True
-                if labelToHold["label"]:
-                    x.placeholder = labelToHold["label"]
-        await interaction.respond(type=7, components = components[0])
-    except:
-        for i in components[0]:
-            for x in i:
-                x.disabled = True
-                x.placeholder = ""
-        await msg.edit(components = components[0])
-
-    return usersReactions
+            comps = value
+    view = AwaitView(comps, set(usersReactions.keys()), timeout=timeouts)
+    view.reactions = {k: None for k in usersReactions}
+    msg, _ = await sendMessage(userID, ctx, msgToSend, True, view)
+    view._message = msg
+    await view.wait()
+    return view.reactions
     
 async def report(userID, ctx):
     discordUser = await ctx.guild.query_members(user_ids=[userID])
