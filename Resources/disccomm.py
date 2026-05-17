@@ -481,9 +481,9 @@ async def showCharacter(userID, ctx):
 
         #Paste the numerical values of exp and health
         w, h = _textsize(d,User.Health + " / " + str((int(User.Stamina) * 10)), font = BitPotion)
-        await pasteLongText(userID, d, BitPotion, (((300-w)/2),(300- h - 5)), User.Health + " / " + str((int(User.Stamina) * 10)), canvas, ctx.message, False, (0,0,0))
+        await pasteLongText(userID, d, BitPotion, (((300-w)/2),(300- h - 11)), User.Health + " / " + str((int(User.Stamina) * 10)), canvas, ctx.message, False, (0,0,0))
         w, h = _textsize(d,User.Exp + " / " + str(expneeded), font = BitPotion)
-        await pasteLongText(userID, d, BitPotion, (((300-w)/2),(280- h - 5)), User.Exp + " / " + str(expneeded), canvas, ctx.message, False, (0,0,0))
+        await pasteLongText(userID, d, BitPotion, (((300-w)/2),(280- h - 11)), User.Exp + " / " + str(expneeded), canvas, ctx.message, False, (0,0,0))
 
         #Paste the name and race at the top of the screen
         w, h = _textsize(d,User.Name, font = Morpheusbig)

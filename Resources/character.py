@@ -457,7 +457,7 @@ class Character:
     def insertNewCharacter(Dictionary):
         columns = ', '.join(str(x).replace('/', '_')for x in Dictionary.keys())
         values = ', '.join("'" + str(x).replace('/', '_') + "'" for x in Dictionary.values())
-        con.insert("Characters", columns, values)
+        con.insert("characters", columns, values)
     @staticmethod
     def createDictionary(ID, Name, Race, Class):
         #Setting variables that change based on chosen race and class
