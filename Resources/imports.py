@@ -62,8 +62,8 @@ def mixedCase(*args):
     for x in list(a): total.append(x)
   return list(total)
 activeUsers = []
-activity = discord.Activity(type=discord.ActivityType.listening, name="mega help")
+activity = discord.Activity(type=discord.ActivityType.listening, name="ab help")
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
-bot = Bot(case_insensitive=True, activity=activity, help_command=None, command_prefix=mixedCase("mega "), intents=intents)
+bot = Bot(case_insensitive=True, activity=activity, help_command=None, command_prefix=mixedCase("ab "), intents=intents)

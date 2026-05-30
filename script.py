@@ -9,7 +9,7 @@ async def hero(ctx):
 @pyd.res.bot.command()
 async def help(ctx):
     authortoken = str(ctx.author.id)
-    embed = pyd.res.discord.Embed(title="Head over to my website to see a full list of my commands!", description="https://megapy.netlify.com/commands") #,color=Hex code
+    embed = pyd.res.discord.Embed(title="Head over to my website to see a full list of my commands!", description="https://azerbot.netlify.com/commands") #,color=Hex code
     await ctx.send(embed=embed)
 
 @pyd.res.bot.command()

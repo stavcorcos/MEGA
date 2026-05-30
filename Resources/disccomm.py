@@ -1379,7 +1379,7 @@ async def runDungeon(userID, ctx):
             dmvc.room1, dmvc.room2, dmvc.room3, dmvc.room4, dmvc.room5, dmvc.room6, dmvc.room7, dmvc.room8, dmvc.room9, dmvc.room10, dmvc.room11, dmvc.room12
         ],{
             "intro":"You\'ve reached the entrance to The Deadmines, do you wish to enter or flee?",
-            "attunefail":"You try to open the door, but no matter how hard you try, the door will not budge. It\'s locked, and the key is nowhere in sight. \n \nOut of the corner of your eye, you catch a glimpse of a merchant, skulking around. \n%NPC Defias Profiteer): ‘Trying to get in there, are we? Not without this here key. You want it? Pay up.’ \n \nYou can view what the merchant sells by typing \'Mega Shop Deadmines\'.",
+            "attunefail":"You try to open the door, but no matter how hard you try, the door will not budge. It\'s locked, and the key is nowhere in sight. \n \nOut of the corner of your eye, you catch a glimpse of a merchant, skulking around. \n%NPC Defias Profiteer): ‘Trying to get in there, are we? Not without this here key. You want it? Pay up.’ \n \nYou can view what the merchant sells by typing \'AB Shop Deadmines\'.",
             "hardmodecheck": dmvc.hardMode
         })
         lister = User.Lockouts.split(",")
